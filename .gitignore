@@ -1,61 +1,205 @@
+# ============================================================================
+# ShieldFlow .gitignore
+# ============================================================================
+
 # Dependencies
 node_modules/
 /.pnp
 .pnp.js
+package-lock.json
+yarn.lock
 
-# Rust
+# Rust / Cargo
 target/
 Cargo.lock
 **/*.rs.bk
+*.rlib
 
 # Noir
 circuits/target/
+circuits/target-wasm/
+proof_cache/
 
-# Frontend build
+# Frontend build & cache
 /build
 /dist
 /.svelte-kit
 /package
 *.local
+/frontend/.next
+/frontend/.nuxt
+/frontend/dist
+/frontend/build
+/frontend/.cache
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
+.env.production.local
+.env.development.local
+.env.test.local
 
-# IDE
+# Private keys / Credentials (NEVER commit these!)
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+secret_*
+private_*
+credentials.json
+.aws
+.ssh
+
+# IDE & Editor
 .vscode/
+.vscode-test/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
+*.sublime-project
+*.sublime-workspace
+.vim/
+.emacs.d/
+.netrwhist
+Session.vim
+.envrc
 
-# Logs
+# IDE Generated
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Logs & Output
 logs/
 *.log
 npm-debug.log*
+npm-error.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+pnpm-debug.log
+npm-debug.log
+debug.log
 
 # Testing
 .nyc_output/
 coverage/
 *.lcov
+.mocha/
+.test-cache/
+test-results/
+junit.xml
 
-# OS
-Thumbs.db
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+.git-credentials
+.github-token
 
-# Temporary
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.Trash-*
+
+# Temporary & Cache files
 *.tmp
 *.temp
 /tmp
+.cache/
+dist/
+build/
+.turbo/
+.eslintcache
+.prettier-ignore
 
-# Soroban
+# Soroban / Stellar specific
 .soroban/
 stellar-asset/
+.soroban-cache/
+contract-id.txt
+wasm-artifacts/
 
-# Build artifacts
+# Noir specific
+*.r1cs
+*.json.r1cs
+noir.toml.bak
+nargo.bak
+witness/
+*.witness
+
+# WASM build artifacts
 *.wasm
 *.wasm.js
+*.wasm.d.ts
+
+# Python / Jupyter (if used for scripts)
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ipynb_checkpoints/
+*.ipynb
+
+# Generated files (don't commit these)
+contracts/*/src/gen/
+frontend/src/generated/
+docs/generated/
+
+# Backup files
+*.bak
+*.backup
+*~.bak
+
+# OS-specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Misc
+.vscode-settings.json
+*.swp
+.prettierignore.bak
+
+# ============================================================================
+# GitHub Actions
+# ============================================================================
+# Local runner files
+.github/workflows/local/
+.act/
+
+# ============================================================================
+# Project-specific
+# ============================================================================
+# Development databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local deployment configs
+deploy.local.json
+.vault-token
+
+# Screenshot/screen recording files (for PR evidence)
+*.mov
+*.mp4
+*.webm
