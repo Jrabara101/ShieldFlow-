@@ -1,0 +1,3 @@
+- [ShieldFlow Full Summary](shieldflow_full_summary.md) — Complete project summary covering problem, innovation, workflow, architecture, users, roadmap, and why it wins (primary reference)
+- [ShieldFlow Project Overview](shieldflow_project_overview.md) — Detailed structure with 6-section breakdown, technical complexity tiers, and funding ask
+- [Stellar Hacks Brief](stellar_hacks_brief.md) — Hackathon rules, ZK frameworks (RISC Zero, Circom, Noir), submission requirements, and evaluation criteria

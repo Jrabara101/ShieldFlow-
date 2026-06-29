@@ -1,0 +1,12 @@
+[workspace]
+members = ["ShieldFlowPool", "ComplianceVerifier", "NullifierRegistry"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+soroban-sdk = { version = "21.7", features = ["logging"] }
+soroban-auth = "21.7"

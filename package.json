@@ -1,0 +1,62 @@
+{
+  "name": "shieldflow",
+  "version": "0.1.0",
+  "description": "ZK-Shielded Enterprise Mass-Payout & FX Protocol with Selective Compliance",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "npm install && cd contracts && cargo build --target wasm32-unknown-unknown && cd ../circuits && nargo build && cd ../frontend && npm install",
+    "build": "npm run build:contracts && npm run build:circuits && npm run build:frontend",
+    "build:contracts": "cd contracts && cargo build --target wasm32-unknown-unknown --release",
+    "build:circuits": "cd circuits && nargo build",
+    "build:frontend": "cd frontend && npm run build",
+    "dev": "concurrently \"npm run dev:contracts\" \"npm run dev:circuits\" \"npm run dev:frontend\"",
+    "dev:contracts": "cd contracts && cargo watch -x 'build --target wasm32-unknown-unknown'",
+    "dev:circuits": "cd circuits && nargo build --watch",
+    "dev:frontend": "cd frontend && npm run dev",
+    "test": "npm run test:contracts && npm run test:circuits && npm run test:frontend",
+    "test:contracts": "cd contracts && cargo test",
+    "test:circuits": "cd circuits && nargo test",
+    "test:frontend": "cd frontend && npm run test",
+    "lint": "npm run lint:contracts && npm run lint:frontend",
+    "lint:contracts": "cd contracts && cargo clippy",
+    "lint:frontend": "cd frontend && npm run lint",
+    "format": "npm run format:contracts && npm run format:frontend",
+    "format:contracts": "cd contracts && cargo fmt",
+    "format:frontend": "cd frontend && npm run format",
+    "clean": "rm -rf contracts/target circuits/target frontend/dist frontend/node_modules",
+    "docs": "cd contracts && cargo doc --open",
+    "deploy:testnet": "cd contracts && bash ../scripts/deploy.sh testnet"
+  },
+  "workspaces": [
+    "contracts",
+    "circuits",
+    "frontend"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "stellar",
+    "zero-knowledge",
+    "privacy",
+    "enterprise",
+    "payments",
+    "zk-proofs",
+    "soroban",
+    "noir"
+  ],
+  "author": "ShieldFlow Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jrabara101/ShieldFlow-.git"
+  },
+  "homepage": "https://github.com/Jrabara101/ShieldFlow-#readme",
+  "bugs": {
+    "url": "https://github.com/Jrabara101/ShieldFlow-/issues"
+  }
+}

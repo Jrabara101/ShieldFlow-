@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Noir
+circuits/target/
+
+# Frontend build
+/build
+/dist
+/.svelte-kit
+/package
+*.local
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+.nyc_output/
+coverage/
+*.lcov
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary
+*.tmp
+*.temp
+/tmp
+
+# Soroban
+.soroban/
+stellar-asset/
+
+# Build artifacts
+*.wasm
+*.wasm.js

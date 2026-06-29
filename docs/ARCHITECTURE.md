@@ -1,0 +1,539 @@
+# ShieldFlow Architecture
+
+This document provides a technical deep-dive into ShieldFlow's architecture, data flow, and design decisions.
+
+---
+
+## System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Enterprise Dashboard (React)                 │
+│  CSV Upload → Validation → Noir Proof Gen → Wallet Signature    │
+└─────────────┬───────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   Stellar Blockchain Network                     │
+│  Transaction: Proof Blob + Public Inputs + Encrypted Memo       │
+└─────────────┬───────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│               Soroban Smart Contracts (Rust/WASM)                │
+│  ShieldFlowPool → BN254 Verify → Transfer Execution            │
+└─────────────┬───────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Protocol 25/26 Host Functions                 │
+│  Native ZK verification, Poseidon hashing, checked arithmetic   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Frontend Architecture
+
+### Technology Stack
+- **Framework**: React 18+ with TypeScript
+- **Build Tool**: Vite
+- **Styling**: Tailwind CSS
+- **State Management**: React Context (no Redux needed for MVP)
+- **Wallet Integration**: Freighter SDK
+- **ZK Proof Generation**: Noir.js (WASM)
+- **Encryption**: TweetNaCl.js (libsodium bindings)
+
+### Component Structure
+
+```
+App.tsx
+├── Dashboard.tsx
+│   ├── CSVUpload.tsx
+│   │   └── PayrollParser.ts (utility)
+│   ├── ProofGenerator.tsx
+│   │   ├── ProofStatus.tsx
+│   │   └── BatchPreview.tsx
+│   ├── TransactionSender.tsx
+│   │   └── WalletConnection.ts (utility)
+│   └── AuditorAccess.tsx
+│       ├── EncryptionKeyManager.ts (utility)
+│       └── AuditLogViewer.tsx
+├── Navigation.tsx
+└── Footer.tsx
+```
+
+### Data Flow: CSV → Proof → Execution
+
+```
+1. User uploads payroll CSV
+   ↓
+2. CSVUpload component parses CSV
+   - Validates recipient addresses
+   - Extracts amounts, DIDs, tax flags
+   - Returns PayrollData[]
+   ↓
+3. PayrollData displayed in BatchPreview
+   - User reviews recipients & amounts
+   - User selects compliance flags (tax jurisdiction, etc.)
+   ↓
+4. User clicks "Generate Proof"
+   ↓
+5. ProofGenerator calls noir.generateProof()
+   - Private inputs: actual amounts, ledger state
+   - Public inputs: recipient commits, total, block height
+   - Noir WASM generates proof blob (~10KB)
+   - Generation time: ~10-30s for 500 recipients
+   ↓
+6. Proof + public inputs displayed
+   - User can inspect proof metadata
+   ↓
+7. User clicks "Execute on Stellar"
+   ↓
+8. TransactionSender calls Freighter
+   - Signs transaction with proof blob + memo
+   - Submits to Stellar network
+   ↓
+9. Frontend polls Stellar for transaction status
+   - Shows confirmation once settled (~5 seconds)
+   ↓
+10. Enterprise can decrypt audit trail
+    - AuditorAccess component handles key management
+    - Auditor views decrypted transaction history
+```
+
+### Key Interfaces (TypeScript)
+
+```typescript
+// Payroll data parsed from CSV
+interface PayrollData {
+  recipientAddress: string;      // Stellar account
+  recipientDID: string;           // Encrypted DID credential
+  amount: BigInt;                 // In stroops (smallest XLM unit)
+  currencyCode: string;           // e.g., "USDC", "EURC"
+  taxJurisdiction: string;        // e.g., "US", "DE", "SG"
+  complianceFlags: string[];      // e.g., ["KYC_PASS", "NO_SANCTION"]
+}
+
+// ZK proof generated by Noir
+interface ProofBlob {
+  proof: Bytes;                   // Actual proof (UltraHonk)
+  publicInputs: PublicInputs;
+  metadata: ProofMetadata;
+}
+
+// Public inputs visible on-chain
+interface PublicInputs {
+  totalAmount: BigInt;
+  recipientCommits: Field[];      // Hashes of recipient DIDs
+  stateRoot: Field;               // Merkle root of internal ledger
+  blockHeight: u64;
+}
+
+// Encrypted audit data
+interface AuditEntry {
+  transactionHash: string;
+  decryptedData: {
+    recipientAddress: string;
+    amount: BigInt;
+    timestamp: u64;
+    complianceChecks: ComplianceResult[];
+  };
+  encryptionKey: Bytes;           // For auditor decryption
+}
+```
+
+### Wallet Integration (Freighter)
+
+The frontend uses Freighter for transaction signing. Flow:
+
+```typescript
+const signAndSubmit = async (proof: ProofBlob, metadata: TxMetadata) => {
+  // Build Soroban transaction
+  const tx = buildTx({
+    invokeFunction: "verify_batch_proof",
+    proof: proof.proof,
+    publicInputs: proof.publicInputs,
+    memo: encryptedAuditMemo(metadata),
+  });
+
+  // Sign with Freighter
+  const signed = await freighter.signTransaction(tx);
+
+  // Submit to Stellar
+  const result = await sorobanRpc.sendTransaction(signed);
+  
+  return result.hash;
+};
+```
+
+---
+
+## Smart Contract Architecture (Soroban)
+
+### Three Core Contracts
+
+#### 1. ShieldFlowPool.rs (Main Contract)
+**Purpose**: Hold liquidity, verify proofs, execute transfers
+
+**Key Functions**:
+```rust
+pub fn verify_batch_proof(
+    proof_blob: Bytes,
+    public_inputs: PublicInputs,
+    recipients: Vec<Address>,
+    amounts: Vec<i128>,
+) -> Result<(), ContractError>
+```
+
+**Logic**:
+1. Receive batch proof from frontend
+2. Extract public inputs from proof
+3. Call native BN254 verifier (CAP-0080):
+   ```rust
+   host::bn254_verify(
+       &proof_blob,
+       &public_inputs.to_bytes()
+   )?;
+   ```
+4. For each recipient:
+   - Transfer stablecoin amount
+   - Call ComplianceVerifier to validate KYC
+5. Store nullifier for replay protection
+6. Emit private event (only visible to sender)
+
+**Storage**:
+```rust
+pub struct ShieldFlowPool {
+    admin: Address,
+    usdc_contract: Address,           // USDC/stablecoin
+    nullifier_registry: Address,      // Prevent replays
+    compliance_verifier: Address,     // KYC logic
+    total_processed: i128,            // Cumulative amount
+    last_batch_hash: Bytes,           // Last verified proof
+}
+```
+
+**Gas Costs**:
+- BN254 verification: ~100-200k stroops
+- Per-transfer: ~1k stroops × recipients
+- Nullifier insert: ~5k stroops
+- **Total per 500-recipient batch**: ~150-200k stroops
+
+#### 2. ComplianceVerifier.rs
+**Purpose**: Encode tax/sanction logic, issue ZK-KYC credentials
+
+**Key Functions**:
+```rust
+pub fn verify_recipient_kyckyc(
+    recipient_did: Bytes,
+    recipient_commit: Field,
+) -> Result<ComplianceResult, ContractError>
+```
+
+**Logic**:
+1. Lookup recipient DID credentials (encrypted)
+2. Verify credential signature (issuer's public key)
+3. Check sanction lists (OFAC, UN, local)
+4. Validate tax jurisdiction
+5. Return ComplianceResult (pass/fail)
+
+**Compliance Checks**:
+- OFAC sanction screening
+- UN restricted persons list
+- Geo-restrictions (if applicable)
+- Tax jurisdiction validation
+- Internal blocklists
+
+**Storage**:
+```rust
+pub struct ComplianceVerifier {
+    trusted_issuers: Vec<Address>,    // DID credential issuers
+    sanction_list_hash: Field,        // OFAC/UN list commitment
+    tax_rules: Map<String, TaxRule>,  // Per-jurisdiction rules
+    audit_events: Vec<AuditEvent>,
+}
+```
+
+#### 3. NullifierRegistry.rs
+**Purpose**: Prevent double-spending
+
+**Key Functions**:
+```rust
+pub fn insert_nullifier(
+    nullifier: Field,  // Hash of spent transaction
+) -> Result<(), ContractError>
+```
+
+**Logic**:
+1. Compute nullifier = Hash(proofCommitment + txNonce)
+2. Check if nullifier already spent
+3. If not: insert into registry
+4. If yes: reject transaction (replay prevention)
+
+**Storage**:
+```rust
+pub struct NullifierRegistry {
+    spent_nullifiers: BTreeSet<Field>,  // Merkle tree friendly
+    merkle_root: Field,                 // For compact verification
+    pruned_at: u64,                     // Last cleanup block
+}
+```
+
+**Optimization**: Use Poseidon hashing (CAP-0075) for Merkle tree operations:
+```rust
+let merkle_leaf = poseidon_hash(&[nullifier]);
+let merkle_proof = compute_merkle_proof(&merkle_tree, merkle_leaf)?;
+```
+
+---
+
+## Zero-Knowledge Circuit (Noir)
+
+### Batch Payout Circuit
+
+**File**: `circuits/src/batch_payout.nr`
+
+**Inputs**:
+```noir
+// Private (hidden from blockchain)
+private amounts: [Field; MAX_BATCH],           // Actual salary amounts
+private audit_key: Field,                      // For auditor decryption
+private ledger_state: Field,                   // Internal accounting state
+
+// Public (visible on-chain)
+public total_amount: Field,
+public recipient_commits: [Field; MAX_BATCH],  // Hash(recipient_DID)
+public state_root: Field,                      // Merkle root of ledger
+public block_height: u64,
+```
+
+**Proof Logic**:
+```noir
+fn main(
+    private amounts: [Field; N],
+    private audit_key: Field,
+    private ledger_state: Field,
+    
+    public total_amount: Field,
+    public recipient_commits: [Field; N],
+    public state_root: Field,
+    public block_height: u64,
+) {
+    // 1. Verify sum of private amounts equals public total
+    let sum = sum_array(amounts);
+    assert(sum == total_amount);
+    
+    // 2. Verify each recipient passes KYC
+    for i in 0..N {
+        // recipient_commits[i] = hash(encrypted_did)
+        // Circuit doesn't decrypt (remains private)
+        // But on-chain contract verifies DID during execution
+        assert(is_valid_commit(recipient_commits[i]));
+    }
+    
+    // 3. Verify state root matches internal ledger
+    let computed_root = compute_state_root(ledger_state, amounts);
+    assert(computed_root == state_root);
+    
+    // 4. Compute audit commitment
+    // Auditor can decrypt with audit_key
+    let audit_commitment = poseidon_hash([audit_key, ledger_state]);
+    // audit_commitment stored in transaction memo (encrypted)
+}
+```
+
+**Proof System**: UltraHonk
+- **Proof size**: ~10KB (compressed)
+- **Verification cost**: ~100-200k stroops (via CAP-0080)
+- **Generation time**: ~10-30s for 500 recipients (WASM)
+
+**Optimization**: Circuit uses Poseidon hashing (CAP-0075 optimized):
+```noir
+fn compute_state_root(ledger_state: Field, amounts: [Field; N]) -> Field {
+    let mut root = ledger_state;
+    for amount in amounts {
+        root = poseidon_hash([root, amount]);  // Native instruction
+    }
+    root
+}
+```
+
+---
+
+## Protocol 25/26 Integration
+
+### Host Functions Used
+
+| Function | Contract | Purpose | Gas Cost |
+|----------|----------|---------|----------|
+| `bn254_verify` (CAP-0080) | ShieldFlowPool | Verify UltraHonk proof | ~100-200k |
+| `poseidon_hash` (CAP-0075) | NullifierRegistry | Hash nullifiers for Merkle tree | ~1k per hash |
+| `checked_add` (CAP-0082) | ShieldFlowPool | Safe addition (no overflow) | ~100 per op |
+
+### Why These Matter
+
+**BN254 Verification (CAP-0080)**:
+- Soroban hosts native pairing checks + multi-scalar multiplication
+- Proof verification that costs 1M+ gas on EVM costs ~100k on Stellar
+- Enables economical batch verification
+
+**Poseidon Hashing (CAP-0075)**:
+- Poseidon is ZK-friendly (optimized for constraint systems)
+- Cheaper than Keccak for Merkle tree operations
+- Native support means no library overhead
+
+**Checked Arithmetic (CAP-0082)**:
+- Guarantees overflow/underflow returns error (not panics)
+- For bulk payout calculations: sum can't exceed u256
+- Essential for enterprise financial reliability
+
+---
+
+## Data Flow: Complete Transaction Lifecycle
+
+```
+STEP 1: Preparation (Frontend)
+├─ User uploads CSV
+├─ Parser extracts: addresses, amounts, DIDs, tax flags
+├─ Returns PayrollData[]
+└─ UI shows batch preview
+
+STEP 2: Proof Generation (Browser WASM)
+├─ NoirJs calls noir.generateProof()
+├─ Private inputs: amounts, ledger_state, audit_key
+├─ Public inputs: total, recipient_commits, state_root
+├─ UltraHonk generates proof (~10KB)
+├─ Generation time: ~10-30s
+└─ Proof verified locally (dev mode)
+
+STEP 3: Transaction Construction (Frontend)
+├─ Build Soroban InvokeHostFunction TX
+├─ Params:
+│  ├─ proof_blob: serialized UltraHonk proof
+│  ├─ public_inputs: total, commits, root
+│  ├─ recipients: [address1, address2, ...]
+│  └─ amounts: [amount1, amount2, ...]
+├─ Memo: encrypted audit data + state root
+└─ Fee: ~300 stroops (tiny)
+
+STEP 4: Transaction Signing (Freighter)
+├─ User reviews TX in Freighter
+├─ User signs with private key
+├─ Freighter returns signed TX blob
+└─ Frontend submits to Stellar
+
+STEP 5: Network Submission (Stellar)
+├─ TX added to mempool
+├─ Included in next ledger close (~5s)
+└─ Horizon notifies of inclusion
+
+STEP 6: Contract Execution (Soroban)
+├─ ShieldFlowPool receives invoke
+├─ Call host::bn254_verify(proof_blob, public_inputs)
+│  ├─ Verify proof signature (pairing checks)
+│  ├─ Verify public inputs match (field arithmetic)
+│  └─ Return: verified ✓ or error ✗
+├─ If verified:
+│  ├─ For each (recipient, amount):
+│  │  ├─ Call ComplianceVerifier.verify_kyckyc()
+│  │  ├─ Call USDC contract: transfer(recipient, amount)
+│  │  ├─ Insert nullifier in NullifierRegistry
+│  │  └─ Emit private event
+│  └─ Update state (total_processed, last_batch_hash)
+├─ If not verified:
+│  └─ Reject TX, emit error event
+└─ Return to Stellar
+
+STEP 7: Confirmation (Frontend)
+├─ Frontend polls Stellar for TX status
+├─ Once confirmed (5s):
+│  ├─ Show success message
+│  ├─ Display transaction hash
+│  ├─ Update dashboard (recipients paid)
+│  └─ Generate audit entry
+└─ User can now share audit key with auditor
+
+STEP 8: Audit Access (Optional)
+├─ Auditor receives encryption key
+├─ Auditor logs into dashboard
+├─ Dashboard decrypts audit memo
+├─ Shows:
+│  ├─ Each recipient's actual address
+│  ├─ Amount paid
+│  ├─ Compliance checks performed
+│  ├─ Tax jurisdiction
+│  └─ Timestamp
+└─ Auditor can generate compliance report
+```
+
+---
+
+## Security Model
+
+### Threat Model
+
+| Threat | Mitigation |
+|--------|------------|
+| **Replay attack** (same proof used twice) | Nullifier registry stores proof hash |
+| **Proof tampering** | UltraHonk proof is cryptographically signed |
+| **Invalid recipient** | ComplianceVerifier validates KYC before transfer |
+| **Overflow in payout sum** | Checked arithmetic (CAP-0082) prevents overflow |
+| **Auditor key leak** | Separate encryption key per batch; recommend rotation |
+| **Private input leak** | Noir proof hides amounts; only public inputs on-chain |
+| **Front-running** | Stellar's sequential ordering prevents reordering |
+
+### Cryptographic Guarantees
+
+1. **Zero-Knowledge**: Verifier learns nothing except that proof is valid
+2. **Soundness**: Attacker cannot generate valid proof for false statement
+3. **Completeness**: Honest prover always generates valid proofs
+
+### Contract Security
+
+- All state transitions emit events (auditability)
+- Verified admin-only functions (contract upgrades, config)
+- No re-entrancy risk (Soroban's model prevents it)
+- Overflow checking (CAP-0082)
+
+---
+
+## Performance Targets
+
+| Metric | Target | Actual (MVP) |
+|--------|--------|--------------|
+| Proof generation (500 recipients) | <30s | TBD |
+| Proof size | ~10KB | TBD |
+| Contract verification gas | <200k stroops | TBD |
+| Settlement time | ~5s | ~5s (Stellar consensus) |
+| Dashboard latency | <2s | TBD |
+
+---
+
+## Future Optimizations
+
+### Frontend
+- [ ] Proof generation parallelization (multi-threaded WASM)
+- [ ] Circuit compression (fewer constraints)
+- [ ] Incremental proof batching (continuous stream)
+
+### Contracts
+- [ ] Formal verification of proof logic
+- [ ] Nullifier registry pruning automation
+- [ ] DID credential caching
+
+### Noir
+- [ ] Lookup tables for KYC checks (instead of logic gates)
+- [ ] Recursive proofs (aggregate multiple batches)
+
+---
+
+## References
+
+- [Stellar Docs](https://developers.stellar.org)
+- [Soroban Docs](https://soroban.stellar.org)
+- [Noir Docs](https://noir-lang.org)
+- [UltraHonk Verifier](https://github.com/yugocabrio/rs-soroban-ultrahonk)
+- [CAP-0080: UltraHonk Verification](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0080.md)
+- [CAP-0075: Poseidon Hashing](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md)
+- [CAP-0082: Checked 256-bit Arithmetic](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0082.md)
