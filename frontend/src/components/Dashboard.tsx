@@ -3,6 +3,8 @@ import CSVUpload from './CSVUpload';
 import { PayloadData, ProofGenerationState, TransactionState } from '../types';
 import { formatAmount } from '../utils/csv';
 import { generateProof, verifyProofFormat } from '../utils/noir';
+import { submitProofToContract, getContractAddresses, validateContractAddresses } from '../utils/contracts';
+import { STELLAR_CONFIG } from '../utils/stellar';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -55,17 +57,33 @@ export default function Dashboard() {
   };
 
   const handleExecute = async () => {
-    if (!proof.proof) {
+    if (!proof.proof || !payload) {
       setError('Please generate proof first');
+      return;
+    }
+
+    const contracts = getContractAddresses();
+    const validation = validateContractAddresses(contracts);
+
+    if (!validation.valid) {
+      setError('Contract configuration error: ' + validation.errors[0]);
       return;
     }
 
     setTx({ status: 'pending' });
     try {
-      await new Promise(r => setTimeout(r, 1500));
+      const submission = {
+        proof: proof.proof,
+        publicInputs: JSON.parse(proof.publicInputs || '{}'),
+        recipients: payload.entries.map(e => e.recipient_address),
+        amounts: payload.entries.map(e => BigInt(e.amount)),
+      };
+
+      const txHash = await submitProofToContract(submission, STELLAR_CONFIG.sorobanRpcUrl);
+
       setTx({
         status: 'success',
-        txHash: 'mock_tx_' + Math.random().toString(36).slice(2),
+        txHash,
       });
     } catch (err) {
       setTx({
@@ -184,25 +202,34 @@ export default function Dashboard() {
                   <p className="text-sm text-blue-200">
                     ℹ️ Your proof is ready to submit to Stellar testnet
                   </p>
+                  <p className="text-xs text-blue-300 mt-2">
+                    Network: {STELLAR_CONFIG.network}
+                  </p>
                 </div>
                 <button
                   onClick={handleExecute}
-                  disabled={tx.status === 'pending'}
+                  disabled={tx.status === 'pending' || !proof.proof}
                   className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {tx.status === 'pending' ? 'Submitting...' : 'Submit Transaction to Stellar'}
+                  {tx.status === 'pending' ? 'Submitting to Stellar...' : 'Submit Proof to Contract'}
                 </button>
-                <div className="p-4 bg-slate-700 rounded-lg text-sm text-gray-300">
-                  <p className="font-medium mb-2">Execution Status:</p>
+                <div className="p-4 bg-slate-700 rounded-lg text-sm text-gray-300 space-y-2">
+                  <p className="font-medium">Execution Status:</p>
                   {tx.status === 'idle' && <p>Ready to execute...</p>}
-                  {tx.status === 'pending' && <p className="text-blue-400">Submitting transaction...</p>}
+                  {tx.status === 'pending' && <p className="text-blue-400">Submitting proof to contract...</p>}
                   {tx.status === 'success' && (
                     <>
-                      <p className="text-green-400">✓ Transaction successful</p>
-                      <p className="text-xs text-gray-400 mt-2">TX: {tx.txHash?.slice(0, 20)}...</p>
+                      <p className="text-green-400">✓ Proof submitted to contract</p>
+                      <div className="bg-slate-800 rounded p-2 max-h-20 overflow-y-auto">
+                        <p className="text-xs text-gray-400">TX Hash: {tx.txHash?.slice(0, 40)}...</p>
+                      </div>
                     </>
                   )}
-                  {tx.status === 'error' && <p className="text-red-400">{tx.error}</p>}
+                  {tx.status === 'error' && (
+                    <div className="bg-red-800 rounded p-2">
+                      <p className="text-red-300 text-xs">Error: {tx.error}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
