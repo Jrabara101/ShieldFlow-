@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import CSVUpload from './CSVUpload';
 import { PayloadData, ProofGenerationState, TransactionState } from '../types';
 import { formatAmount } from '../utils/csv';
+import { generateProof, verifyProofFormat } from '../utils/noir';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('upload');
@@ -28,15 +29,21 @@ export default function Dashboard() {
 
     setProof({ status: 'generating' });
     try {
-      await new Promise(r => setTimeout(r, 2000));
+      const proofData = await generateProof(payload, auditKey);
+      const validation = verifyProofFormat(proofData);
+
+      if (!validation.valid) {
+        setProof({
+          status: 'error',
+          error: validation.errors.join('; '),
+        });
+        return;
+      }
+
       setProof({
         status: 'ready',
-        proof: 'mock_proof_' + Math.random().toString(36).slice(2),
-        publicInputs: JSON.stringify({
-          total_amount: payload.totalAmount.toString(),
-          recipient_count: payload.recipientCount,
-          audit_key_hash: 'mock_hash',
-        }),
+        proof: proofData.proof,
+        publicInputs: JSON.stringify(proofData.publicInputs),
       });
       setActiveTab('execute');
     } catch (err) {
@@ -138,22 +145,32 @@ export default function Dashboard() {
                 </div>
                 <button
                   onClick={handleGenerateProof}
-                  disabled={proof.status === 'generating'}
+                  disabled={proof.status === 'generating' || !payload}
                   className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {proof.status === 'generating' ? 'Generating...' : 'Generate Proof (2 seconds for demo)'}
+                  {proof.status === 'generating' ? 'Generating Proof...' : `Generate ZK Proof (~${payload?.recipientCount || 0} recipients)`}
                 </button>
-                <div className="p-4 bg-slate-700 rounded-lg text-sm text-gray-300">
-                  <p className="font-medium mb-2">Proof Generation Status:</p>
+                <div className="p-4 bg-slate-700 rounded-lg text-sm text-gray-300 space-y-2">
+                  <p className="font-medium">Proof Generation Status:</p>
                   {proof.status === 'idle' && <p>Ready to generate proof...</p>}
-                  {proof.status === 'generating' && <p className="text-blue-400">Generating proof...</p>}
+                  {proof.status === 'generating' && <p className="text-blue-400">Computing ZK proof (Poseidon hashing)...</p>}
                   {proof.status === 'ready' && (
                     <>
                       <p className="text-green-400">✓ Proof generated successfully</p>
-                      <p className="text-xs text-gray-400 mt-2">Proof: {proof.proof?.slice(0, 20)}...</p>
+                      <div className="bg-slate-800 rounded p-2 max-h-32 overflow-y-auto text-xs font-mono">
+                        <p className="text-gray-400">Proof: {proof.proof?.slice(0, 30)}...</p>
+                        {proof.publicInputs && (
+                          <>
+                            <p className="text-gray-400 mt-1">Public Inputs:</p>
+                            <pre className="text-gray-400 text-xs whitespace-pre-wrap break-words">
+                              {JSON.stringify(JSON.parse(proof.publicInputs), null, 2).slice(0, 200)}...
+                            </pre>
+                          </>
+                        )}
+                      </div>
                     </>
                   )}
-                  {proof.status === 'error' && <p className="text-red-400">{proof.error}</p>}
+                  {proof.status === 'error' && <p className="text-red-400">Error: {proof.error}</p>}
                 </div>
               </div>
             </div>

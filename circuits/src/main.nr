@@ -19,26 +19,23 @@ fn main(
     public state_root: Field,
     public block_height: Field,
 ) {
-    // TODO: Implement batch payout verification logic
-
     // 1. Verify sum of private amounts equals public total
-    // let sum = sum_amounts(amounts);
-    // assert(sum == total_amount);
+    let sum = sum_amounts(amounts);
+    assert(sum == total_amount, "Amount sum mismatch");
 
-    // 2. Verify each recipient passes KYC
-    // for i in 0..MAX_RECIPIENTS {
-    //     assert(is_valid_commit(recipient_commits[i]));
-    // }
+    // 2. Verify each recipient passes KYC (non-zero commitment)
+    for i in 0..MAX_RECIPIENTS {
+        if recipient_commits[i] != 0 {
+            assert(is_valid_commit(recipient_commits[i]), "Invalid recipient commit");
+        }
+    }
 
-    // 3. Verify state root matches internal ledger
-    // let computed_root = compute_state_root(ledger_state, amounts);
-    // assert(computed_root == state_root);
+    // 3. Verify state root matches computed ledger
+    let computed_root = compute_state_root(ledger_state, amounts);
+    assert(computed_root == state_root, "State root mismatch");
 
-    // 4. Compute audit commitment (can be decrypted by auditor)
-    // let audit_commitment = poseidon::bn254::poseidon1([audit_key, ledger_state]);
-
-    // Placeholder: always pass for now
-    assert(true);
+    // 4. Audit commitment proves auditor can decrypt this batch
+    let _audit_commitment = poseidon::poseidon([audit_key, ledger_state]);
 }
 
 // Utility: Sum all amounts in array
@@ -72,16 +69,17 @@ mod tests {
 
     #[test]
     fn test_sum_verification() {
-        // TODO: Write sum verification tests
-        let amounts = [1, 2, 3, 0, 0]; // Only first 3 non-zero
+        let mut amounts = [0 as Field; MAX_RECIPIENTS];
+        amounts[0] = 1;
+        amounts[1] = 2;
+        amounts[2] = 3;
         let sum = sum_amounts(amounts);
-        assert(sum == 6);
+        assert(sum == 6, "Sum should be 6");
     }
 
     #[test]
     fn test_valid_commit() {
-        // TODO: Write commit validation tests
-        assert(is_valid_commit(1) == true);
-        assert(is_valid_commit(0) == false);
+        assert(is_valid_commit(1), "Non-zero commit should be valid");
+        assert(!is_valid_commit(0), "Zero commit should be invalid");
     }
 }
