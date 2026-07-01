@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { connectWallet, disconnectWallet, getWallet } from '../utils/stellar';
 
 interface NavigationProps {
   isConnected: boolean;
@@ -6,13 +7,30 @@ interface NavigationProps {
 }
 
 export default function Navigation({ isConnected, setIsConnected }: NavigationProps) {
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState('');
+
   const handleConnect = async () => {
+    setConnecting(true);
+    setError('');
+
     try {
-      // TODO: Implement Freighter wallet connection
+      const wallet = await connectWallet();
+      const publicKey = await wallet.getPublicKey();
+      console.log('Connected wallet:', publicKey);
       setIsConnected(true);
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to connect wallet';
+      console.error('Wallet connection failed:', message);
+      setError(message);
+    } finally {
+      setConnecting(false);
     }
+  };
+
+  const handleDisconnect = () => {
+    disconnectWallet();
+    setIsConnected(false);
   };
 
   return (
@@ -20,17 +38,26 @@ export default function Navigation({ isConnected, setIsConnected }: NavigationPr
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold text-white">🛡️ ShieldFlow</h1>
+          {isConnected && (
+            <span className="text-sm text-gray-400 ml-4">
+              {getWallet()?.getPublicKey().then(pk => pk.slice(0, 8)).catch(() => 'Connected')}
+            </span>
+          )}
         </div>
-        <button
-          onClick={handleConnect}
-          className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-            isConnected
-              ? 'bg-green-600 text-white'
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
-          }`}
-        >
-          {isConnected ? '✓ Connected' : 'Connect Wallet'}
-        </button>
+        <div className="flex items-center gap-4">
+          {error && <span className="text-red-400 text-sm">{error}</span>}
+          <button
+            onClick={isConnected ? handleDisconnect : handleConnect}
+            disabled={connecting}
+            className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+              isConnected
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {connecting ? 'Connecting...' : isConnected ? '✓ Connected' : 'Connect Wallet'}
+          </button>
+        </div>
       </div>
     </nav>
   );

@@ -1,7 +1,77 @@
 import React, { useState } from 'react';
+import CSVUpload from './CSVUpload';
+import { PayloadData, ProofGenerationState, TransactionState } from '../types';
+import { formatAmount } from '../utils/csv';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('upload');
+  const [payload, setPayload] = useState<PayloadData | null>(null);
+  const [proof, setProof] = useState<ProofGenerationState>({ status: 'idle' });
+  const [tx, setTx] = useState<TransactionState>({ status: 'idle' });
+  const [error, setError] = useState<string>('');
+  const [auditKey, setAuditKey] = useState('');
+
+  const handlePayloadLoaded = (data: PayloadData) => {
+    setPayload(data);
+    setError('');
+  };
+
+  const handleError = (err: string) => {
+    setError(err);
+  };
+
+  const handleGenerateProof = async () => {
+    if (!payload) {
+      setError('Please load a CSV first');
+      return;
+    }
+
+    setProof({ status: 'generating' });
+    try {
+      await new Promise(r => setTimeout(r, 2000));
+      setProof({
+        status: 'ready',
+        proof: 'mock_proof_' + Math.random().toString(36).slice(2),
+        publicInputs: JSON.stringify({
+          total_amount: payload.totalAmount.toString(),
+          recipient_count: payload.recipientCount,
+          audit_key_hash: 'mock_hash',
+        }),
+      });
+      setActiveTab('execute');
+    } catch (err) {
+      setProof({
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Failed to generate proof',
+      });
+    }
+  };
+
+  const handleExecute = async () => {
+    if (!proof.proof) {
+      setError('Please generate proof first');
+      return;
+    }
+
+    setTx({ status: 'pending' });
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      setTx({
+        status: 'success',
+        txHash: 'mock_tx_' + Math.random().toString(36).slice(2),
+      });
+    } catch (err) {
+      setTx({
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Failed to submit transaction',
+      });
+    }
+  };
+
+  const getStatus = () => {
+    if (payload) return 'Loaded ✓';
+    return 'Awaiting CSV';
+  };
 
   return (
     <div className="space-y-6">
@@ -13,8 +83,9 @@ export default function Dashboard() {
               ? 'text-blue-400 border-b-2 border-blue-400'
               : 'text-gray-400 hover:text-gray-300'
           }`}
+          disabled={!payload}
         >
-          1. Upload CSV
+          1. Upload CSV {payload && '✓'}
         </button>
         <button
           onClick={() => setActiveTab('generate')}
@@ -23,8 +94,9 @@ export default function Dashboard() {
               ? 'text-blue-400 border-b-2 border-blue-400'
               : 'text-gray-400 hover:text-gray-300'
           }`}
+          disabled={!payload}
         >
-          2. Generate Proof
+          2. Generate Proof {proof.status === 'ready' && '✓'}
         </button>
         <button
           onClick={() => setActiveTab('execute')}
@@ -33,8 +105,9 @@ export default function Dashboard() {
               ? 'text-blue-400 border-b-2 border-blue-400'
               : 'text-gray-400 hover:text-gray-300'
           }`}
+          disabled={!proof.proof}
         >
-          3. Execute
+          3. Execute {tx.status === 'success' && '✓'}
         </button>
       </div>
 
@@ -44,14 +117,7 @@ export default function Dashboard() {
           {activeTab === 'upload' && (
             <div className="card">
               <div className="card-header">Upload Payroll CSV</div>
-              <div className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer">
-                <p className="text-gray-400 mb-2">Drag and drop your payroll CSV here</p>
-                <p className="text-sm text-gray-500">or click to select file</p>
-              </div>
-              <div className="mt-4 p-4 bg-slate-700 rounded-lg text-sm text-gray-400">
-                <p>Expected CSV format:</p>
-                <p>recipient_address, amount, did, tax_jurisdiction</p>
-              </div>
+              <CSVUpload onDataLoaded={handlePayloadLoaded} onError={handleError} />
             </div>
           )}
 
@@ -60,19 +126,34 @@ export default function Dashboard() {
               <div className="card-header">Generate ZK Proof</div>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Audit Key</label>
+                  <label className="block text-sm font-medium mb-2">Audit Key (optional)</label>
                   <input
                     type="password"
                     placeholder="Enter encryption key for audit trail"
                     className="input-field"
+                    value={auditKey}
+                    onChange={e => setAuditKey(e.target.value)}
+                    disabled={proof.status === 'generating'}
                   />
                 </div>
-                <button className="w-full btn-primary">
-                  Generate Proof (Estimated: 30 seconds for 500 recipients)
+                <button
+                  onClick={handleGenerateProof}
+                  disabled={proof.status === 'generating'}
+                  className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {proof.status === 'generating' ? 'Generating...' : 'Generate Proof (2 seconds for demo)'}
                 </button>
                 <div className="p-4 bg-slate-700 rounded-lg text-sm text-gray-300">
                   <p className="font-medium mb-2">Proof Generation Status:</p>
-                  <p>Ready to generate proof...</p>
+                  {proof.status === 'idle' && <p>Ready to generate proof...</p>}
+                  {proof.status === 'generating' && <p className="text-blue-400">Generating proof...</p>}
+                  {proof.status === 'ready' && (
+                    <>
+                      <p className="text-green-400">✓ Proof generated successfully</p>
+                      <p className="text-xs text-gray-400 mt-2">Proof: {proof.proof?.slice(0, 20)}...</p>
+                    </>
+                  )}
+                  {proof.status === 'error' && <p className="text-red-400">{proof.error}</p>}
                 </div>
               </div>
             </div>
@@ -87,14 +168,32 @@ export default function Dashboard() {
                     ℹ️ Your proof is ready to submit to Stellar testnet
                   </p>
                 </div>
-                <button className="w-full btn-primary">
-                  Submit Transaction to Stellar
+                <button
+                  onClick={handleExecute}
+                  disabled={tx.status === 'pending'}
+                  className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {tx.status === 'pending' ? 'Submitting...' : 'Submit Transaction to Stellar'}
                 </button>
                 <div className="p-4 bg-slate-700 rounded-lg text-sm text-gray-300">
                   <p className="font-medium mb-2">Execution Status:</p>
-                  <p>Transaction status will appear here...</p>
+                  {tx.status === 'idle' && <p>Ready to execute...</p>}
+                  {tx.status === 'pending' && <p className="text-blue-400">Submitting transaction...</p>}
+                  {tx.status === 'success' && (
+                    <>
+                      <p className="text-green-400">✓ Transaction successful</p>
+                      <p className="text-xs text-gray-400 mt-2">TX: {tx.txHash?.slice(0, 20)}...</p>
+                    </>
+                  )}
+                  {tx.status === 'error' && <p className="text-red-400">{tx.error}</p>}
                 </div>
               </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="p-4 bg-red-900 border border-red-700 rounded-lg">
+              <p className="text-red-200">{error}</p>
             </div>
           )}
         </div>
@@ -105,20 +204,22 @@ export default function Dashboard() {
           <div className="space-y-4 text-sm">
             <div>
               <p className="text-gray-400">Total Recipients</p>
-              <p className="text-2xl font-bold text-white">0</p>
+              <p className="text-2xl font-bold text-white">{payload?.recipientCount || 0}</p>
             </div>
             <div>
               <p className="text-gray-400">Total Amount</p>
-              <p className="text-2xl font-bold text-white">$0.00</p>
+              <p className="text-2xl font-bold text-white">
+                {payload ? formatAmount(payload.totalAmount) : '0'} XLM
+              </p>
             </div>
             <div>
               <p className="text-gray-400">Status</p>
-              <p className="text-blue-400 font-medium">Ready</p>
+              <p className="text-blue-400 font-medium">{getStatus()}</p>
             </div>
-            <div className="pt-4 border-t border-slate-700">
-              <button className="w-full btn-secondary text-sm">
-                View Details
-              </button>
+            <div className="pt-4 border-t border-slate-700 space-y-2">
+              <p className="text-xs text-gray-500">CSV: {payload ? '✓' : '—'}</p>
+              <p className="text-xs text-gray-500">Proof: {proof.status === 'ready' ? '✓' : '—'}</p>
+              <p className="text-xs text-gray-500">TX: {tx.status === 'success' ? '✓' : '—'}</p>
             </div>
           </div>
         </div>

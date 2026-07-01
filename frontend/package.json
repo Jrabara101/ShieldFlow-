@@ -13,12 +13,7 @@
   },
   "dependencies": {
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "@stellar/freighter-api": "^9.0.0",
-    "@stellar/js-stellar-sdk": "^12.0.0",
-    "papaparse": "^5.4.1",
-    "tweetnacl": "^1.0.3",
-    "tweetnacl-util": "^0.15.1"
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
