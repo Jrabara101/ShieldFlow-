@@ -6,9 +6,9 @@ export interface ContractAddresses {
 
 export function getContractAddresses(): ContractAddresses {
   return {
-    pool: process.env.VITE_SHIELDFLOW_POOL_CONTRACT || '',
-    compliance: process.env.VITE_COMPLIANCE_VERIFIER_CONTRACT || '',
-    nullifier: process.env.VITE_NULLIFIER_REGISTRY_CONTRACT || '',
+    pool: import.meta.env.VITE_SHIELDFLOW_POOL_CONTRACT || '',
+    compliance: import.meta.env.VITE_COMPLIANCE_VERIFIER_CONTRACT || '',
+    nullifier: import.meta.env.VITE_NULLIFIER_REGISTRY_CONTRACT || '',
   };
 }
 

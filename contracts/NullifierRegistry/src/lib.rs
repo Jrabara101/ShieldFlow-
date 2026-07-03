@@ -1,4 +1,6 @@
-use soroban_sdk::{contract, contractimpl, symbol_short, Bytes, Env, Symbol, Address, Error, Map};
+#![no_std]
+
+use soroban_sdk::{contract, contractimpl, symbol_short, Bytes, Env, Symbol, Address, Error};
 
 const ADMIN: Symbol = symbol_short!("admin");
 const NULLIFIERS: Symbol = symbol_short!("nulf");
@@ -42,7 +44,7 @@ impl NullifierRegistry {
         Ok(storage.has(&nullifier))
     }
 
-    pub fn prune(env: Env, blocks_to_keep: u64) -> Result<(), Error> {
+    pub fn prune(env: Env, blocks_to_keep: u32) -> Result<(), Error> {
         let current_block = env.ledger().sequence();
         let cutoff_block = current_block.saturating_sub(blocks_to_keep);
 

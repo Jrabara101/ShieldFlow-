@@ -1,4 +1,6 @@
-use soroban_sdk::{contract, contractimpl, symbol_short, Bytes, Env, Map, Symbol, Vec, Address, Error};
+#![no_std]
+
+use soroban_sdk::{contract, contractimpl, symbol_short, Bytes, Env, Symbol, Vec, Address, Error};
 
 const ADMIN: Symbol = symbol_short!("admin");
 const COMPLIANCE: Symbol = symbol_short!("comp");

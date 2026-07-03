@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { connectWallet, disconnectWallet, getWallet } from '../utils/stellar';
+import { connectWallet, disconnectWallet } from '../utils/stellar';
 
 interface NavigationProps {
   isConnected: boolean;
@@ -9,6 +9,7 @@ interface NavigationProps {
 export default function Navigation({ isConnected, setIsConnected }: NavigationProps) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState('');
+  const [publicKey, setPublicKey] = useState('');
 
   const handleConnect = async () => {
     setConnecting(true);
@@ -16,8 +17,9 @@ export default function Navigation({ isConnected, setIsConnected }: NavigationPr
 
     try {
       const wallet = await connectWallet();
-      const publicKey = await wallet.getPublicKey();
-      console.log('Connected wallet:', publicKey);
+      const key = await wallet.getPublicKey();
+      console.log('Connected wallet:', key);
+      setPublicKey(key);
       setIsConnected(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to connect wallet';
@@ -30,6 +32,7 @@ export default function Navigation({ isConnected, setIsConnected }: NavigationPr
 
   const handleDisconnect = () => {
     disconnectWallet();
+    setPublicKey('');
     setIsConnected(false);
   };
 
@@ -38,9 +41,9 @@ export default function Navigation({ isConnected, setIsConnected }: NavigationPr
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold text-white">🛡️ ShieldFlow</h1>
-          {isConnected && (
+          {isConnected && publicKey && (
             <span className="text-sm text-gray-400 ml-4">
-              {getWallet()?.getPublicKey().then(pk => pk.slice(0, 8)).catch(() => 'Connected')}
+              {publicKey.slice(0, 8)}...
             </span>
           )}
         </div>

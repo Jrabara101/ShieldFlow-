@@ -63,11 +63,14 @@ export default function Dashboard() {
     }
 
     const contracts = getContractAddresses();
-    const validation = validateContractAddresses(contracts);
+    const isConfigured = contracts.pool || contracts.compliance || contracts.nullifier;
 
-    if (!validation.valid) {
-      setError('Contract configuration error: ' + validation.errors[0]);
-      return;
+    if (isConfigured) {
+      const validation = validateContractAddresses(contracts);
+      if (!validation.valid) {
+        setError('Contract configuration error: ' + validation.errors[0]);
+        return;
+      }
     }
 
     setTx({ status: 'pending' });
@@ -76,7 +79,7 @@ export default function Dashboard() {
         proof: proof.proof,
         publicInputs: JSON.parse(proof.publicInputs || '{}'),
         recipients: payload.entries.map(e => e.recipient_address),
-        amounts: payload.entries.map(e => BigInt(e.amount)),
+        amounts: payload.entries.map(e => BigInt(Math.floor(parseFloat(e.amount) * 1e7))),
       };
 
       const txHash = await submitProofToContract(submission, STELLAR_CONFIG.sorobanRpcUrl);

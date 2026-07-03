@@ -6,7 +6,6 @@ publish.workspace = true
 
 [dependencies]
 soroban-sdk = { workspace = true }
-soroban-auth = { workspace = true }
 
 [lib]
 crate-type = ["cdylib"]

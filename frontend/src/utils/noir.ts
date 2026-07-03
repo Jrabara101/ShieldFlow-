@@ -26,7 +26,7 @@ function stringToField(str: string): bigint {
   if (!str) return BigInt(0);
   const hash = str
     .split('')
-    .reduce((h, c) => BigInt(h * 31) + BigInt(c.charCodeAt(0)), BigInt(0));
+    .reduce((h, c) => h * BigInt(31) + BigInt(c.charCodeAt(0)), BigInt(0));
   const bn254_order = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
   return hash % bn254_order;
 }
@@ -48,7 +48,8 @@ export async function generateProof(
     setTimeout(() => {
       try {
         const ledgerState = stringToField('ledger_init');
-        const stateRoot = computeStateRoot(ledgerState, payload.entries.map(e => BigInt(e.amount)));
+        const amounts = payload.entries.map(e => BigInt(Math.floor(parseFloat(e.amount) * 1e7)));
+        const stateRoot = computeStateRoot(ledgerState, amounts);
         const blockHeightNum = BigInt(blockHeight);
 
         const proof: Proof = {

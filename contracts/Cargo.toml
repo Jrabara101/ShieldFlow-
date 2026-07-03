@@ -8,5 +8,12 @@ version = "0.1.0"
 publish = false
 
 [workspace.dependencies]
-soroban-sdk = { version = "21.7", features = ["logging"] }
-soroban-auth = "21.7"
+soroban-sdk = { version = "21.7" }
+
+[profile.release]
+overflow-checks = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+debug = 0
+panic = "abort"
